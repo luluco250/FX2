@@ -239,7 +239,7 @@ namespace FX2
 	#endif
 		pass
 		{
-			VertexShader = PostProcessVS;
+			VertexShader = ScreenVS;
 			PixelShader = MainPS;
 		}
 	}

@@ -212,7 +212,7 @@ namespace FX2
 		p.w = 1.0;
 	}
 
-	void PostProcessVS(
+	void ScreenVS(
 		uint id : SV_VertexID,
 		out float4 pos : SV_Position,
 		out float2 uv : TEXCOORD)
