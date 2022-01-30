@@ -57,24 +57,12 @@ uniform int _Help \
 
 namespace FX2
 {
+	static const float Pi = 3.14159;
+	static const float DoublePi = 6.28318;
+	static const float HalfPi = 1.57079;
+
 	texture ColorTex : COLOR;
 	texture DepthTex : DEPTH;
-
-#ifdef FX2_USE_SHARED_TEXTURES
-	texture SharedTex1
-	{
-		Width = BUFFER_WIDTH;
-		Height = BUFFER_HEIGHT;
-		Format = RGBA16F;
-	};
-
-	texture SharedTex2
-	{
-		Width = BUFFER_WIDTH;
-		Height = BUFFER_HEIGHT;
-		Format = RGBA16F;
-	};
-#endif
 
 	sampler ColorPoint
 	{
@@ -107,18 +95,6 @@ namespace FX2
 		MagFilter = LINEAR;
 		MipFilter = LINEAR;
 	};
-
-#ifdef FX2_USE_SHARED_TEXTURES
-	sampler Shared1
-	{
-		Texture = SharedTex1;
-	};
-
-	sampler Shared2
-	{
-		Texture = SharedTex2;
-	};
-#endif
 
 	struct ShaderParams
 	{
@@ -194,14 +170,93 @@ namespace FX2
 		return GetDepth(uv, 0.0);
 	}
 
-	float2 ScaleUV(float2 uv, float2 scale, float2 center)
+	float2 ScaleUV(float2 uv, float2 scale, float2 pivot)
 	{
-		return (uv - center) * scale + center;
+		return (uv - pivot) * scale + pivot;
 	}
 
 	float2 ScaleUV(float2 uv, float2 scale)
 	{
 		return ScaleUV(uv, scale, 0.5);
+	}
+
+	float4 BlendScreen(float4 a, float4 b, float w)
+	{
+		return 1.0 - ((1.0 - a) * (1.0 - b * w));
+	}
+
+	float Gaussian(float x, float sigma)
+	{
+		sigma *= sigma;
+		return (1.0 / sqrt(DoublePi * sigma)) * exp(-((x * x) / (2.0 * sigma)));
+	}
+
+	float Gaussian2D(float2 i, float sigma)
+	{
+		sigma *= sigma;
+		return
+			(1.0 / DoublePi * sigma) *
+			exp(-((i.x * i.x + i.y * i.y) / (2.0 * sigma)));
+	}
+
+	float4 GaussianBlur(
+		sampler s,
+		float2 uv,
+		float2 ps,
+		float sigma,
+		int samples)
+	{
+		float halfSamples = samples * 0.5;
+		uv -= halfSamples * ps;
+
+		float accum = Gaussian(-halfSamples, sigma);
+		float4 color = tex2D(s, uv) * accum;
+
+		[unroll]
+		for (int i = 1; i < samples; ++i)
+		{
+			float weight = Gaussian(i - halfSamples, sigma);
+			uv += ps;
+			color += tex2D(s, uv) * weight;
+			accum += weight;
+		}
+
+		return color / accum;
+	}
+
+	float3 Reinhard(float3 c)
+	{
+		return c / (1.0 + c);
+	}
+
+	float3 ReinhardInv(float3 c)
+	{
+		return -(c / min(c - 1.0, -0.1));
+	}
+
+	float3 BakingLabACES(float3 c)
+	{
+		static const float A = 0.0245786;
+		static const float B = 0.000090537;
+		static const float C = 0.983729;
+		static const float D = 0.4329510;
+		static const float E = 0.238081;
+
+		return saturate((c * (c + A) - B) / (c * (C * c + D) + E));
+	}
+
+	float3 BakingLabACESInv(float3 c)
+	{
+		static const float A = 0.0245786;
+		static const float B = 0.000090537;
+		static const float C = 0.983729;
+		static const float D = 0.4329510;
+		static const float E = 0.238081;
+
+		return abs((
+			(A - D * c) -
+			sqrt(pow(abs(D * c - A), 2.0) - 4.0 * (C * c - 1.0) * (B + E * c))
+		) / (2.0 * (C * c - 1.0)));
 	}
 
 	void EmptyVS(uint id : SV_VertexID, out float4 p : SV_Position)
